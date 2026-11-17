@@ -1,0 +1,282 @@
+name: Build iStoreOS for Phicomm N1
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_branch:
+        description: 'iStoreOS 源码分支'
+        required: true
+        default: 'istoreos-25.12'
+
+env:
+  REPO_URL: https://github.com/istoreos/istoreos
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev libelf-dev python3-dev python3-setuptools \
+            python3-pyelftools rsync swig unzip zlib1g-dev file wget xsltproc zstd llvm lld
+          df -h
+
+      - name: Clone iStoreOS source
+        run: |
+          git clone --depth 1 -b "${{ inputs.repo_branch }}" "$REPO_URL" openwrt
+          cd openwrt
+          echo "源码版本: $(git log -1 --format='%h %s (%cd)')"
+
+      - name: Update & install feeds
+        working-directory: openwrt
+        run: |
+          sed -i 's/\r$//' ../config/* ../scripts/*.sh
+          cat ../config/feeds.extra >> feeds.conf.default
+          ./scripts/feeds update -a
+          # 官方 feeds 没有 OAF 时，补充 OpenAppFilter 源
+          if ! ./scripts/feeds list | awk '{print $1}' | grep -qx kmod-oaf; then
+            echo "未找到 kmod-oaf，添加 OpenAppFilter 源"
+            echo "src-git oaf https://github.com/destan19/OpenAppFilter.git" >> feeds.conf.default
+            ./scripts/feeds update oaf
+          fi
+          ./scripts/feeds install -a
+          cat feeds.conf.default
+
+      - name: Generate .config
+        working-directory: openwrt
+        run: |
+          cat ../config/target.config ../config/istoreos-custom.config > .config
+          make defconfig
+          bash ../scripts/verify-config.sh
+
+      - name: Download sources
+        working-directory: openwrt
+        run: |
+          make download -j8 || make download -j1 V=s
+          find dl -size -1024c -exec ls -l {} \; -delete
+
+      - name: Build firmware
+        working-directory: openwrt
+        run: |
+          echo "使用 $(nproc) 线程编译"
+          make -j$(nproc) IGNORE_ERRORS=m || make -j1 V=s IGNORE_ERRORS=m
+
+      - name: Check rootfs size & BTF
+        working-directory: openwrt
+        run: |
+          SQ=$(find build_dir -path '*linux-amlogic*' -name 'root.squashfs' | head -n1)
+          if [ -n "$SQ" ]; then
+            SIZE=$(stat -c %s "$SQ"); LIMIT=$((256*1024*1024))
+            echo "rootfs (squashfs): $((SIZE/1024/1024)) MiB / 256 MiB"
+            if [ "$SIZE" -ge "$LIMIT" ]; then
+              echo "::error::rootfs 超过 256MiB 分区，刷入会失败或破坏配置，请精简插件"
+              exit 1
+            fi
+          else
+            echo "::warning::未找到 root.squashfs，跳过大小检查"
+          fi
+          VM=$(find build_dir -maxdepth 4 -path '*linux-amlogic*' -name vmlinux | head -n1)
+          if [ -n "$VM" ] && readelf -S "$VM" | grep -q '\.BTF'; then
+            echo "内核包含 BTF ✅ (dae 可用)"
+          else
+            echo "::error::内核未包含 BTF，dae 将无法运行"
+            exit 1
+          fi
+
+      - name: Collect firmware
+        run: |
+          mkdir -p firmware kmods
+          T=$(ls -d openwrt/bin/targets/*/*)
+          cp "$T"/*.img.gz firmware/ 2>/dev/null || true
+          cp "$T"/sha256sums "$T"/config.buildinfo "$T"/*.manifest firmware/ 2>/dev/null || true
+          cp openwrt/.config firmware/full.config
+          cp -r "$T"/packages/. kmods/ 2>/dev/null || true
+          ls -lh firmware
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: istoreos-n1-firmware-${{ github.run_number }}
+          path: firmware
+
+      - name: Upload matching kmods
+        uses: actions/upload-artifact@v4
+        with:
+          name: istoreos-n1-kmods-${{ github.run_number }}
+          path: kmods
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: |
+            openwrt/logs
+            openwrt/.config
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
