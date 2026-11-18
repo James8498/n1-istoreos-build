@@ -80,6 +80,9 @@ jobs:
             grep -q 'TRANSPARENT_HUGEPAGE_NEVER' "$f" || echo '# CONFIG_TRANSPARENT_HUGEPAGE_NEVER is not set' >> "$f"
             echo "patched: $f"
           done
+          # 拷入 rt2x00 PCI MWI 补丁：内核 6.12 已删除 pci_set_mwi/pci_clear_mwi
+          mkdir -p package/kernel/mac80211/patches/rt2x00
+          cp ../patches/mac80211/rt2x00/997-rt2x00pci-drop-pci-mwi.patch package/kernel/mac80211/patches/rt2x00/
 
       - name: Download sources
         working-directory: openwrt
@@ -147,3 +150,4 @@ jobs:
           path: |
             openwrt/logs
             openwrt/.config
+        include-hidden-files: true
