@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        name: Build iStoreOS for Phicomm N1
         description: 'iStoreOS 源码分支'
         required: true
         default: 'istoreos-25.12'
+
 env:
   REPO_URL: https://github.com/istoreos/istoreos
   TZ: Asia/Shanghai
